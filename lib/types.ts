@@ -18,9 +18,9 @@ export interface RawRecord {
   comments: number;
 }
 
-/** Optional per-record AI enrichment, produced offline by scripts/enrich.mjs
- *  and loaded from data/enriched.json if present. Never required — the
- *  dashboard falls back to deterministic explanations when this is absent. */
+/** A pre-resolved review decision, loaded from the static data/enriched.json
+ *  file. The Feedback page's Accept/Discard buttons are demo-only UI state
+ *  and don't write here — this field only ever comes from that file. */
 export interface EnrichedInfo {
   correctedSentiment: SentimentLabel;
   confidence: number; // 0-100
@@ -48,7 +48,7 @@ export interface ProcessedRecord extends RawRecord {
   reviewFlags: ReviewFlag[];
   /** 0-100 priority score: how urgently this post likely needs a response. */
   severityScore: number;
-  /** Optional offline Gemini enrichment, if scripts/enrich.mjs has been run. */
+  /** Present only if pre-populated in data/enriched.json; see EnrichedInfo. */
   enriched: EnrichedInfo | null;
 }
 

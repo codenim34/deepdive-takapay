@@ -15,39 +15,10 @@ function deterministicReason(r: ProcessedRecord): string {
   return `Labeled "${r.sentiment}" but the score (${r.sentiment_score}/100) maps to "${r.sentimentBucket}". The two disagree.`;
 }
 
-type RowState = "pending" | "saving" | "saved" | "save-error" | "discarded";
+type RowState = "pending" | "accepted" | "discarded";
 
 function FeedbackRow({ r }: { r: ProcessedRecord }) {
   const [state, setState] = useState<RowState>("pending");
-  const [error, setError] = useState<string | null>(null);
-
-  async function accept() {
-    setState("saving");
-    try {
-      const res = await fetch("/api/enriched", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          id: r.id,
-          enrichment: {
-            correctedSentiment: r.sentimentBucket,
-            confidence: 100,
-            reason: "Confirmed by brand manager — existing sentiment is accurate.",
-          },
-        }),
-      });
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.error ?? "Save failed");
-      setState("saved");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
-      setState("save-error");
-    }
-  }
-
-  function discard() {
-    setState("discarded");
-  }
 
   if (r.enriched) {
     return (
@@ -66,7 +37,7 @@ function FeedbackRow({ r }: { r: ProcessedRecord }) {
       className={`rounded-lg border border-l-4 p-4 ${
         state === "discarded"
           ? "border-slate-200 border-l-slate-300 bg-slate-50"
-          : state === "saved"
+          : state === "accepted"
             ? "border-emerald-200 border-l-emerald-400 bg-emerald-50/40"
             : "border-amber-200 border-l-amber-400 bg-amber-50"
       }`}
@@ -98,29 +69,24 @@ function FeedbackRow({ r }: { r: ProcessedRecord }) {
             Undo
           </button>
         </div>
-      ) : state === "saved" ? (
-        <p className="mt-2 text-xs text-emerald-700">Accepted — saved to enriched.json.</p>
+      ) : state === "accepted" ? (
+        <p className="mt-2 text-xs text-emerald-700">Accepted.</p>
       ) : (
-        <div className="mt-2">
-          {state === "save-error" && <p className="mb-1 text-xs text-rose-600">Couldn&apos;t save: {error}</p>}
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={accept}
-              disabled={state === "saving"}
-              className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {state === "saving" ? "Saving…" : "Accept"}
-            </button>
-            <button
-              type="button"
-              onClick={discard}
-              disabled={state === "saving"}
-              className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Discard
-            </button>
-          </div>
+        <div className="mt-2 flex gap-2">
+          <button
+            type="button"
+            onClick={() => setState("accepted")}
+            className="rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-emerald-700"
+          >
+            Accept
+          </button>
+          <button
+            type="button"
+            onClick={() => setState("discarded")}
+            className="rounded-md border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
+          >
+            Discard
+          </button>
         </div>
       )}
     </div>

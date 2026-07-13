@@ -10,36 +10,42 @@ Engineer take-home task.
 
 ## What I built
 
-A single-page Next.js dashboard (App Router, TypeScript, Tailwind, Recharts)
-that reads the provided dataset at build time and shows, top to bottom:
+A Next.js app (App Router, TypeScript, Tailwind, Recharts) with a persistent
+sidebar and three pages, all reading the same static dataset:
 
-- **Executive summary** — auto-generated bullets ("Failed_transaction is the
-  largest source of negative sentiment...") built from template strings
-  against the same aggregates the charts use below it — not an LLM call, so
-  it's always in sync with what's on screen and costs nothing to render.
-- **Brand health score** — a deliberately transparent 0-100 score
-  (`100 − % of brand-relevant posts that are negative`), shown with the
-  exact formula next to it, plus a week-over-week trend delta. No hidden
-  weighting — anyone can recompute it by hand from the sentiment split
-  shown right beside it.
-- **Top problems** — topics ranked by negative-post volume, with a
-  business-impact label.
-- **Competitor comparison** against NgoodPay (see "the insight I added"
-  below).
-- **What's working** — topics generating the most positive feedback, each
-  with a representative quote, for the marketing side of the same coin.
-- **Urgent posts** — negative posts ranked by a rule-based severity score
-  (negativity + engagement + whether money is explicitly at stake), i.e.
-  the posts most likely to need a direct response first.
-- **Needs human review** — a single flagged-post queue (not a full
-  triage/audit trail) for posts whose sentiment can't be trusted at face
-  value, each with a plain-language reason. See "wrong sentiment as a
-  feature" below.
-- **Detail views** — sentiment donut, sentiment-over-time trend, topic
-  breakdown by sentiment, and platform breakdown, for anyone who wants to
-  drill past the summary.
-- **Filters** — by platform, topic, sentiment, and free-text search.
-- **A visible data-quality note** — see below, this is deliberate.
+- **Dashboard** (`/`) — the main view:
+  - **Top stat row**: total posts collected, posts discarded (off-topic /
+    duplicate), posts needing human feedback (links to the Feedback page),
+    and a **Brand Health** score. Clicking Brand Health opens a popup with
+    the exact formula, the sentiment split behind it, and the week-over-week
+    trend — nothing is hidden behind the headline number.
+  - **Brand Analytics** — auto-generated bullets ("Failed_transaction is the
+    largest source of negative sentiment...") built from template strings
+    against the same aggregates the charts use below it. Deliberately **not**
+    an LLM call — see "where I overrode AI" below for why.
+  - **Top problems** (ranked by negative volume + business impact) shown
+    side-by-side with **What's working** (topics generating the most
+    positive feedback), so the brand manager sees both sides in one glance.
+  - **Urgent posts** — negative posts ranked by a rule-based severity score
+    (negativity + engagement + whether money is explicitly at stake).
+  - **Detail views** — sentiment donut, sentiment-over-time trend, topic
+    breakdown by sentiment, and platform breakdown.
+  - **Filters** — by platform, topic, sentiment, and free-text search.
+  - **A visible data-quality note** — see below, this is deliberate.
+- **Competitor Analysis** (`/competitor`) — the NgoodPay comparison (see "the
+  insight I added" below), broken out onto its own page since it's a
+  different kind of question than day-to-day sentiment monitoring.
+- **Feedback** (`/feedback`) — the review queue for posts whose sentiment
+  label or score doesn't match their own text. A brand manager can **Accept**
+  or **Discard** each one (demo-only — see below); no AI is involved in this
+  page at all.
+- **Brand Assistant** — a floating chat widget available on every page. It's
+  the one place in the app that calls Gemini live, grounded in the same
+  aggregate stats shown on screen (topic breakdown, competitor mentions,
+  health score, urgent posts, positive highlights, data-quality counts) —
+  never raw post text beyond a few short quotes. It's for open-ended
+  questions ("why is failed_transaction so negative this week?"); it's not
+  used anywhere the app needs a reproducible number.
 
 ## The insight I added, and why
 
@@ -67,8 +73,8 @@ purpose: a 4-6 hour task is the wrong place for an unverifiable classifier.
   Instead, every post gets checked against two independent rules — does the
   label disagree with the score, and does the text contain clear complaint
   language despite a high score — and anything that trips either rule goes
-  into the "Needs human review" queue with a plain-language reason, rather
-  than being silently corrected or silently trusted.
+  into the Feedback queue with a plain-language reason, rather than being
+  silently corrected or silently trusted.
 - **`brand_mention` is `True` for all 660 rows**, including ~60 posts tagged
   `off_topic` that aren't really about the brand (they just happen to
   mention it, or don't meaningfully engage with it). I exclude these from
@@ -86,24 +92,19 @@ purpose: a 4-6 hour task is the wrong place for an unverifiable classifier.
   three scripts/registers in a few hours would be a much bigger and riskier
   undertaking than the task calls for.
 
-## Optional: offline Gemini enrichment for the review queue
+## Human review workflow
 
-`scripts/enrich.mjs` is a standalone script (not called by the deployed
-app) that sends just the flagged "needs review" posts to Gemini for a
-second opinion, and writes the result to `data/enriched.json`. Run it
-locally with:
+Flagged posts live on the Feedback page (`/feedback`), sourced from the same
+two rules described above. There's no AI suggestion there — a brand manager
+either **Accepts** or **Discards** each one, with a plain-language reason
+for why it was flagged shown alongside.
 
-```bash
-GEMINI_API_KEY=your_key npm run enrich
-```
-
-The dashboard reads `data/enriched.json` if present and shows Gemini's
-suggested correction + reason instead of the deterministic explanation. It
-ships as `{}` in the repo and the dashboard works identically either way —
-I deliberately kept this out of the deployed app's runtime path: a live LLM
-call from the production site would mean shipping an API key and making the
-live demo depend on a third-party API staying up during review, which is
-the wrong tradeoff for something graded on "does the live demo work."
+**Accept/Discard is UI-only in this build — nothing is persisted.** Clicking
+either button just updates that row's state in the browser; a page refresh
+resets it. This is a deliberate placeholder: wiring it to a real backend
+(a database write keyed by record id, behind an API route) is
+straightforward but out of scope for a take-home task, and would be the
+first thing to add for real use.
 
 ## What I'd improve with another week
 
@@ -113,13 +114,14 @@ the wrong tradeoff for something graded on "does the live demo work."
 - Add a proper fuzzy-duplicate detector (current one only catches
   exact-text duplicates after trimming/lowercasing; near-identical
   paraphrases would slip through).
-- Extend the offline Gemini enrichment to cover the executive summary too,
-  as an optional AI-polished paragraph layered on top of the deterministic
-  bullets, rather than only the review queue.
-- Add a way for a brand manager to resolve a "needs review" post themselves
-  (accept/override the sentiment) and have that persist.
-- Add authentication and a way to save/share a filtered view (e.g. a
-  permalink to "just failed_transaction posts from the last week").
+- Let the Brand Assistant answer questions about individual posts, not just
+  the aggregate snapshot — right now it can't quote a specific post unless
+  it's already one of the handful surfaced in urgent posts/highlights.
+- Persist chat history server-side (it currently resets on page reload) and
+  share filter state across the Dashboard/Competitor/Feedback pages (e.g.
+  via URL query params) instead of each page working off the whole dataset.
+- Add authentication and a way to save/share a filtered dashboard view (e.g.
+  a permalink to "just failed_transaction posts from the last week").
 
 ## Where AI helped, and where I overrode it
 
@@ -127,7 +129,7 @@ the wrong tradeoff for something graded on "does the live demo work."
   chart components quickly, which let me spend more of the time budget on
   the actual product decisions (what to measure, what to exclude, what the
   one extra insight should be) rather than on wiring.
-- Early drafts of the "review" logic only checked label-vs-score
+- Early drafts of the review logic only checked label-vs-score
   disagreement. Digging into the data by hand surfaced a worse case: posts
   with money-loss complaints scored 75-92 (strongly positive) where the
   label *and* score were both wrong, not just mismatched with each other.
@@ -144,12 +146,25 @@ the wrong tradeoff for something graded on "does the live demo work."
   questioning, so I replaced it with the current Brand Health score, which
   is one transparent formula (`100 − % negative`) shown next to its own
   inputs.
-- I also decided against calling an LLM live from the deployed app (for
-  sentiment correction or an AI-generated summary) because it would add an
-  API-key/cost/uptime dependency to something graded on staying reachable
-  during review. The optional Gemini enrichment script reflects that: it
-  runs offline, touches only the already-flagged subset, and the app works
-  identically with or without it.
+- I tried, then reversed, wiring Gemini directly into Brand Analytics
+  (auto-writing the executive-summary bullets, with a rule-based fallback)
+  and into the Feedback queue (a per-post "ask Gemini, then accept/reject"
+  suggestion). Both got rolled back: the numbers a brand manager acts on
+  need to be reproducible by hand from what's on screen, and the review
+  queue didn't need a live AI opinion when a human is already making the
+  final accept/discard call themselves. Gemini's one home in this app is
+  now the Brand Assistant chat — clearly a separate, conversational surface,
+  not something the headline metrics depend on.
+- While testing the (since-removed) live analytics generation, I hit
+  Gemini's free-tier quota (20 requests/day) within a single testing
+  session — a concrete reminder that "call the LLM automatically on every
+  filter change" doesn't hold up outside a demo. The Brand Assistant is
+  explicit, user-triggered chat for exactly that reason.
+- The assistant's system prompt is instructed to ground every answer only in
+  the aggregate stats it's given each turn (never raw post text beyond a few
+  short quotes) and to say "I don't know" rather than invent a number — the
+  same trust-nothing-silently philosophy as the rest of the app, applied to
+  the one part that's actually generative.
 
 ## Running locally
 
@@ -160,13 +175,19 @@ npm run dev
 
 Then open http://localhost:3000.
 
+The Brand Assistant chat requires `GEMINI_API_KEY` in your environment (see
+`.env`); without it, the rest of the app works identically and the chat
+simply reports that Gemini isn't configured.
+
 ## Deploying
 
-This is a static-data Next.js app with no required env vars, so it deploys
-as-is to Vercel:
+This is a static-data Next.js app. Everything except the Brand Assistant
+works with no env vars at all:
 
 ```bash
 npx vercel --prod
 ```
 
-or connect the GitHub repo directly in the Vercel dashboard.
+or connect the GitHub repo directly in the Vercel dashboard. To enable the
+Brand Assistant on a deployed instance, set `GEMINI_API_KEY` in that host's
+environment variables.
