@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   brandRelevant,
   computeCompetitorInsight,
@@ -78,10 +78,51 @@ export default function Dashboard({ records }: { records: ProcessedRecord[] }) {
         .sort((a, b) => b.severityScore - a.severityScore),
     [relevant]
   );
-  const summaryBullets = useMemo(
+  const ruleBasedBullets = useMemo(
     () => computeExecutiveSummary(filtered, topicBreakdown, competitorInsight, health),
     [filtered, topicBreakdown, competitorInsight, health]
   );
+
+  // Brand Analytics prefers an AI-written summary from Gemini, generated
+  // server-side from these same aggregates, and falls back to the
+  // deterministic bullets above if no API key is configured or the call
+  // fails. Debounced so rapid filter changes don't fire a request per change.
+  const [aiBullets, setAiBullets] = useState<string[] | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+
+  useEffect(() => {
+    if (sentimentSplit.total === 0) return;
+
+    const controller = new AbortController();
+
+    const timer = setTimeout(async () => {
+      setAiLoading(true);
+      try {
+        const res = await fetch("/api/brand-analytics", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ topicBreakdown, competitor: competitorInsight, health, sentimentSplit }),
+          signal: controller.signal,
+        });
+        if (!res.ok) throw new Error("brand analytics request failed");
+        const data = await res.json();
+        if (!Array.isArray(data.bullets)) throw new Error("unexpected response shape");
+        setAiBullets(data.bullets);
+      } catch {
+        setAiBullets(null);
+      } finally {
+        setAiLoading(false);
+      }
+    }, 500);
+
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [topicBreakdown, competitorInsight, health, sentimentSplit]);
+
+  const displayBullets = sentimentSplit.total > 0 && aiBullets ? aiBullets : ruleBasedBullets;
+  const bulletsSource: "ai" | "rule" = sentimentSplit.total > 0 && aiBullets ? "ai" : "rule";
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-8">
@@ -100,9 +141,10 @@ export default function Dashboard({ records }: { records: ProcessedRecord[] }) {
         resultCount={filtered.length}
       />
 
-      <ExecutiveSummary bullets={summaryBullets} />
-
-      <BrandHealthHeader health={health} split={sentimentSplit} />
+      <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <BrandHealthHeader health={health} split={sentimentSplit} />
+        <ExecutiveSummary bullets={displayBullets} source={bulletsSource} loading={aiLoading} />
+      </section>
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard
