@@ -11,7 +11,7 @@ export default function PositiveHighlights({ highlights }: { highlights: Positiv
   if (highlights.length === 0) return null;
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="rounded-xl border border-l-4 border-slate-200 border-l-emerald-400 bg-white p-6 shadow-sm">
       <h2 className="text-base font-semibold text-slate-800">What&apos;s working</h2>
       <p className="mt-1 text-sm text-slate-500">
         Topics generating the most positive feedback — worth amplifying in marketing.

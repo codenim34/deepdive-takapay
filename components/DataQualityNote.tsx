@@ -2,7 +2,7 @@ import type { DataQualityNotes } from "@/lib/analytics";
 
 export default function DataQualityNote({ notes }: { notes: DataQualityNotes }) {
   return (
-    <div className="rounded-xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600">
+    <div className="rounded-xl border border-l-4 border-slate-200 border-l-slate-300 bg-slate-50 p-5 text-sm text-slate-600">
       <p className="font-medium text-slate-700">A note on data quality</p>
       <ul className="mt-2 list-disc space-y-1 pl-5">
         <li>

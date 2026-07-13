@@ -4,7 +4,7 @@ export default function UrgentPosts({ posts }: { posts: ProcessedRecord[] }) {
   if (posts.length === 0) return null;
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="rounded-xl border border-l-4 border-slate-200 border-l-rose-500 bg-white p-6 shadow-sm">
       <h2 className="text-base font-semibold text-slate-800">Urgent posts</h2>
       <p className="mt-1 text-sm text-slate-500">
         Ranked by a severity score combining negativity, engagement, and whether money is at

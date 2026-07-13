@@ -4,7 +4,7 @@ export default function CompetitorPanel({ insight }: { insight: CompetitorInsigh
   const { competitorName, mentionCount, sentimentSplit, themes, sampleQuotes } = insight;
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="rounded-xl border border-l-4 border-slate-200 border-l-amber-400 bg-white p-6 shadow-sm">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-lg font-semibold text-slate-900">
           Where TakaPay loses ground to {competitorName}

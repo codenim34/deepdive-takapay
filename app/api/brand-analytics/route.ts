@@ -1,15 +1,31 @@
 import { NextResponse } from "next/server";
-import type { CompetitorInsight, HealthScore, SentimentSplit, TopicBreakdownRow } from "@/lib/analytics";
+import type { CompetitorInsight, HealthScore, PositiveHighlight, SentimentSplit, TopicBreakdownRow } from "@/lib/analytics";
+import { callGemini, GeminiError } from "@/lib/gemini";
 
 export const runtime = "nodejs";
 
-const MODEL = "gemini-3.1-flash-lite";
+const SYSTEM_INSTRUCTION = `You are a senior brand analytics advisor briefing the brand manager of TakaPay, a mobile-wallet app. You are shown aggregate social-listening data (topic breakdown, competitor mentions, urgent posts, positive highlights, data-quality notes) — never raw text beyond the short quotes given.
+
+Write a briefing a busy brand manager can act on in under a minute:
+- Ground every claim in the numbers or quotes provided. Never invent a fact, statistic, or quote that isn't implied by the data.
+- Be direct and specific (name the topic, the number, the platform) rather than generic ("negative sentiment is up" is not useful; "failed_transaction complaints doubled and drove the health score down" is).
+- Prioritize by business impact, not just volume.
+- Each recommended action should be something a brand or ops team could actually do this week.`;
+
+interface UrgentPostInput {
+  text: string;
+  platform: string;
+  severityScore: number;
+}
 
 interface BrandAnalyticsRequest {
   topicBreakdown: TopicBreakdownRow[];
   competitor: CompetitorInsight | null;
   health: HealthScore;
   sentimentSplit: SentimentSplit;
+  urgentPosts?: UrgentPostInput[];
+  positiveHighlights?: PositiveHighlight[];
+  dataQuality?: { needsReview: number; duplicates: number; offTopic: number; totalRecords: number };
 }
 
 function isValidBody(body: unknown): body is BrandAnalyticsRequest {
@@ -25,7 +41,7 @@ function isValidBody(body: unknown): body is BrandAnalyticsRequest {
 }
 
 function buildPrompt(body: BrandAnalyticsRequest): string {
-  const { topicBreakdown, competitor, health, sentimentSplit } = body;
+  const { topicBreakdown, competitor, health, sentimentSplit, urgentPosts, positiveHighlights, dataQuality } = body;
 
   const topicLines = topicBreakdown
     .filter((t) => t.topic !== "off_topic")
@@ -40,9 +56,21 @@ function buildPrompt(body: BrandAnalyticsRequest): string {
         .join(", ") || "none"}.`
     : "No competitor mentions in the current data.";
 
-  return `You are a brand analytics assistant for a mobile-wallet brand called TakaPay. Based ONLY on the aggregate numbers below (do not invent facts not implied by them), write 3-5 short executive-summary bullet points a brand manager could act on. Be concrete, reference the numbers, and keep each bullet under 30 words. Do not use markdown formatting or bullet characters in the strings themselves.
+  const urgentLines = (urgentPosts ?? [])
+    .slice(0, 5)
+    .map((p) => `- [${p.platform}, severity ${p.severityScore}] "${p.text.slice(0, 160)}"`)
+    .join("\n");
 
-Brand health score: ${health.score}/100 (${health.direction}, ${health.deltaPoints} pts vs prior week)
+  const positiveLines = (positiveHighlights ?? [])
+    .slice(0, 4)
+    .map((h) => `- ${h.topic} (${h.count} positive posts), e.g. "${h.sampleQuote.text.slice(0, 160)}"`)
+    .join("\n");
+
+  const dataQualityLine = dataQuality
+    ? `Of ${dataQuality.totalRecords} posts in the current filter: ${dataQuality.needsReview} are flagged for human review (unreliable sentiment), ${dataQuality.duplicates} are duplicates, and ${dataQuality.offTopic} are off-topic. These are excluded from the headline numbers above.`
+    : "";
+
+  return `Brand health score: ${health.score}/100 (${health.direction}, ${health.deltaPoints} pts vs prior week)
 Sentiment split: ${sentimentSplit.positivePct.toFixed(0)}% positive, ${sentimentSplit.negativePct.toFixed(0)}% negative, ${sentimentSplit.neutralPct.toFixed(0)}% neutral, across ${sentimentSplit.total} posts
 
 Topic breakdown:
@@ -50,8 +78,17 @@ ${topicLines || "(no on-topic data)"}
 
 ${competitorLine}
 
+Most urgent negative posts right now:
+${urgentLines || "(none)"}
+
+What's working well:
+${positiveLines || "(no standout positive topics)"}
+
+${dataQualityLine}
+
 Respond with ONLY a JSON object, no markdown fences, no other text, in this exact shape:
-{"bullets": ["<bullet 1>", "<bullet 2>", ...]}`;
+{"overview": "<2-3 sentence plain-language summary of where the brand stands right now>", "actions": ["<specific, prioritized recommended action, max 30 words>", ...]}
+Include 3-5 items in "actions".`;
 }
 
 export async function POST(request: Request) {
@@ -71,40 +108,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid request shape" }, { status: 400 });
   }
 
-  const prompt = buildPrompt(body);
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${apiKey}`;
-
   try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: { temperature: 0.3, responseMimeType: "application/json" },
-      }),
-    });
+    const parsed = (await callGemini(apiKey, buildPrompt(body), SYSTEM_INSTRUCTION)) as {
+      overview?: unknown;
+      actions?: unknown;
+    };
 
-    if (!res.ok) {
-      const errText = await res.text();
-      return NextResponse.json({ error: `Gemini API error ${res.status}: ${errText}` }, { status: 502 });
+    if (typeof parsed.overview !== "string" || !Array.isArray(parsed.actions)) {
+      return NextResponse.json({ error: "Gemini response missing overview/actions" }, { status: 502 });
     }
 
-    const data = await res.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!text) {
-      return NextResponse.json({ error: "Unexpected Gemini response shape" }, { status: 502 });
-    }
-
-    const parsed = JSON.parse(text);
-    if (!Array.isArray(parsed.bullets)) {
-      return NextResponse.json({ error: "Gemini response missing bullets array" }, { status: 502 });
-    }
-
-    return NextResponse.json({ bullets: parsed.bullets as string[] });
+    return NextResponse.json({ overview: parsed.overview, actions: parsed.actions as string[] });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Unknown error calling Gemini" },
-      { status: 502 }
-    );
+    const status = err instanceof GeminiError ? 502 : 500;
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Unknown error calling Gemini" }, { status });
   }
 }

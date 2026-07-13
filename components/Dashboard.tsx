@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   brandRelevant,
   computeCompetitorInsight,
@@ -23,7 +23,7 @@ import PlatformChart from "./PlatformChart";
 import CompetitorPanel from "./CompetitorPanel";
 import FiltersBar from "./FiltersBar";
 import DataQualityNote from "./DataQualityNote";
-import ExecutiveSummary from "./ExecutiveSummary";
+import ExecutiveSummary, { type AiBrandAnalytics } from "./ExecutiveSummary";
 import BrandHealthHeader from "./BrandHealthHeader";
 import TopProblemsTable from "./TopProblemsTable";
 import PositiveHighlights from "./PositiveHighlights";
@@ -83,46 +83,48 @@ export default function Dashboard({ records }: { records: ProcessedRecord[] }) {
     [filtered, topicBreakdown, competitorInsight, health]
   );
 
-  // Brand Analytics prefers an AI-written summary from Gemini, generated
-  // server-side from these same aggregates, and falls back to the
-  // deterministic bullets above if no API key is configured or the call
-  // fails. Debounced so rapid filter changes don't fire a request per change.
-  const [aiBullets, setAiBullets] = useState<string[] | null>(null);
+  // Brand Analytics prefers an AI-written overview from Gemini, generated
+  // server-side from these same aggregates plus urgent posts and positive
+  // highlights for grounding, and falls back to the deterministic bullets
+  // above if no API key is configured or the call fails. Generation is a
+  // manual, explicit action (not tied to every filter change) since the
+  // free-tier Gemini quota is limited per day.
+  const [aiAnalytics, setAiAnalytics] = useState<AiBrandAnalytics | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (sentimentSplit.total === 0) return;
-
-    const controller = new AbortController();
-
-    const timer = setTimeout(async () => {
-      setAiLoading(true);
-      try {
-        const res = await fetch("/api/brand-analytics", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ topicBreakdown, competitor: competitorInsight, health, sentimentSplit }),
-          signal: controller.signal,
-        });
-        if (!res.ok) throw new Error("brand analytics request failed");
-        const data = await res.json();
-        if (!Array.isArray(data.bullets)) throw new Error("unexpected response shape");
-        setAiBullets(data.bullets);
-      } catch {
-        setAiBullets(null);
-      } finally {
-        setAiLoading(false);
+  async function generateAiAnalytics() {
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const res = await fetch("/api/brand-analytics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topicBreakdown,
+          competitor: competitorInsight,
+          health,
+          sentimentSplit,
+          urgentPosts: urgentPosts
+            .slice(0, 5)
+            .map((p) => ({ text: p.text, platform: p.platform, severityScore: p.severityScore })),
+          positiveHighlights,
+          dataQuality,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Brand analytics request failed");
+      if (typeof data.overview !== "string" || !Array.isArray(data.actions)) {
+        throw new Error("Unexpected response shape");
       }
-    }, 500);
-
-    return () => {
-      controller.abort();
-      clearTimeout(timer);
-    };
-  }, [topicBreakdown, competitorInsight, health, sentimentSplit]);
-
-  const displayBullets = sentimentSplit.total > 0 && aiBullets ? aiBullets : ruleBasedBullets;
-  const bulletsSource: "ai" | "rule" = sentimentSplit.total > 0 && aiBullets ? "ai" : "rule";
+      setAiAnalytics({ overview: data.overview, actions: data.actions });
+    } catch (err) {
+      setAiAnalytics(null);
+      setAiError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setAiLoading(false);
+    }
+  }
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-8">
@@ -143,7 +145,13 @@ export default function Dashboard({ records }: { records: ProcessedRecord[] }) {
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         <BrandHealthHeader health={health} split={sentimentSplit} />
-        <ExecutiveSummary bullets={displayBullets} source={bulletsSource} loading={aiLoading} />
+        <ExecutiveSummary
+          ruleBasedBullets={ruleBasedBullets}
+          ai={aiAnalytics}
+          loading={aiLoading}
+          error={aiError}
+          onGenerate={generateAiAnalytics}
+        />
       </section>
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -165,7 +173,7 @@ export default function Dashboard({ records }: { records: ProcessedRecord[] }) {
         />
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-xl border border-l-4 border-slate-200 border-l-rose-400 bg-white p-6 shadow-sm">
         <h2 className="text-base font-semibold text-slate-800">Top problems</h2>
         <p className="mt-1 text-sm text-slate-500">Ranked by negative post volume.</p>
         <div className="mt-4">
@@ -182,17 +190,17 @@ export default function Dashboard({ records }: { records: ProcessedRecord[] }) {
       <ReviewQueuePanel records={flaggedForReview} />
 
       <section className="grid grid-cols-1 gap-4 lg:grid-cols-5">
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-2">
+        <div className="rounded-xl border border-l-4 border-slate-200 border-l-slate-300 bg-white p-6 shadow-sm lg:col-span-2">
           <h2 className="text-base font-semibold text-slate-800">Sentiment split</h2>
           <SentimentDonut split={sentimentSplit} />
         </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm lg:col-span-3">
+        <div className="rounded-xl border border-l-4 border-slate-200 border-l-slate-300 bg-white p-6 shadow-sm lg:col-span-3">
           <h2 className="text-base font-semibold text-slate-800">Sentiment over time</h2>
           <TrendChart data={trend} />
         </div>
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-xl border border-l-4 border-slate-200 border-l-slate-300 bg-white p-6 shadow-sm">
         <h2 className="text-base font-semibold text-slate-800">
           What people are talking about, and how they feel about it
         </h2>
@@ -205,7 +213,7 @@ export default function Dashboard({ records }: { records: ProcessedRecord[] }) {
         </div>
       </section>
 
-      <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-xl border border-l-4 border-slate-200 border-l-slate-300 bg-white p-6 shadow-sm">
         <h2 className="text-base font-semibold text-slate-800">Volume by platform</h2>
         <p className="mt-1 text-sm text-slate-500">
           Where the conversation is happening, and which platforms skew negative.

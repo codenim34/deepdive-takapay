@@ -17,7 +17,7 @@ export default function ReviewQueuePanel({ records }: { records: ProcessedRecord
   const remaining = records.length - visible.length;
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="rounded-xl border border-l-4 border-slate-200 border-l-amber-400 bg-white p-6 shadow-sm">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-base font-semibold text-slate-800">Needs human review</h2>
         <span className="text-sm text-slate-500">{records.length} posts flagged</span>
@@ -30,7 +30,7 @@ export default function ReviewQueuePanel({ records }: { records: ProcessedRecord
       {records.length === 0 ? (
         <p className="mt-4 text-sm text-slate-400">Nothing flagged for review.</p>
       ) : (
-        <div className="mt-4 max-h-[420px] space-y-3 overflow-y-auto pr-1">
+        <div className="mt-4 max-h-105 space-y-3 overflow-y-auto pr-1">
           {visible.map((r) => (
             <div key={r.id} className="rounded-lg border border-amber-200 bg-amber-50 p-3">
               <div className="flex flex-wrap items-center gap-1.5">
