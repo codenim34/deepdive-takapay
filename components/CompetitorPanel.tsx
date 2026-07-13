@@ -6,15 +6,11 @@ export default function CompetitorPanel({ insight }: { insight: CompetitorInsigh
   return (
     <div className="rounded-xl border border-l-4 border-slate-200 border-l-amber-400 bg-white p-6 shadow-sm">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-lg font-semibold text-slate-900">
-          Where TakaPay loses ground to {competitorName}
-        </h3>
-        <span className="text-sm text-slate-500">{mentionCount} posts mention {competitorName}</span>
+        <h3 className="text-lg font-semibold text-slate-900">TakaPay vs. {competitorName}</h3>
+        <span className="text-sm text-slate-500">{mentionCount} mentions</span>
       </div>
       <p className="mt-1 text-sm text-slate-500">
-        Of these comparison posts, {sentimentSplit.negativePct.toFixed(0)}% are negative toward
-        TakaPay — people are actively weighing TakaPay against an alternative, which makes this a
-        different kind of signal than ordinary complaints.
+        {sentimentSplit.negativePct.toFixed(0)}% of comparison posts are negative toward TakaPay.
       </p>
 
       {themes.length > 0 && (

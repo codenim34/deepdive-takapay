@@ -401,6 +401,22 @@ export function computeHealthScore(records: ProcessedRecord[]): HealthScore {
   };
 }
 
+export function riskLabel(score: number): { label: string; color: string; accent: string } {
+  if (score >= 70)
+    return {
+      label: "Healthy",
+      color: "text-emerald-600 bg-emerald-50 ring-emerald-200",
+      accent: "border-l-emerald-400",
+    };
+  if (score >= 50)
+    return {
+      label: "Moderate risk",
+      color: "text-amber-600 bg-amber-50 ring-amber-200",
+      accent: "border-l-amber-400",
+    };
+  return { label: "High risk", color: "text-rose-600 bg-rose-50 ring-rose-200", accent: "border-l-rose-400" };
+}
+
 function prettyTopicLabel(topic: string): string {
   return topic
     .split("_")
