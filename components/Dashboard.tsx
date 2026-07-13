@@ -23,7 +23,7 @@ import TopicBreakdownChart from "./TopicBreakdownChart";
 import PlatformChart from "./PlatformChart";
 import FiltersBar from "./FiltersBar";
 import DataQualityNote from "./DataQualityNote";
-import ExecutiveSummary, { type AiBrandAnalytics } from "./ExecutiveSummary";
+import ExecutiveSummary from "./ExecutiveSummary";
 import TopProblemsTable from "./TopProblemsTable";
 import PositiveHighlights from "./PositiveHighlights";
 import UrgentPosts from "./UrgentPosts";
@@ -88,49 +88,6 @@ export default function Dashboard({ records }: { records: ProcessedRecord[] }) {
   const datasetDiscarded = records.length - datasetRelevant.length;
   const datasetFlagged = useMemo(() => reviewQueue(records), [records]);
 
-  // Brand Analytics prefers an AI-written overview from Gemini, generated
-  // server-side from these same aggregates plus urgent posts and positive
-  // highlights for grounding, and falls back to the deterministic bullets
-  // above if no API key is configured or the call fails. Generation is a
-  // manual, explicit action (not tied to every filter change) since the
-  // free-tier Gemini quota is limited per day.
-  const [aiAnalytics, setAiAnalytics] = useState<AiBrandAnalytics | null>(null);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiError, setAiError] = useState<string | null>(null);
-
-  async function generateAiAnalytics() {
-    setAiLoading(true);
-    setAiError(null);
-    try {
-      const res = await fetch("/api/brand-analytics", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          topicBreakdown,
-          competitor: competitorInsight,
-          health,
-          sentimentSplit,
-          urgentPosts: urgentPosts
-            .slice(0, 5)
-            .map((p) => ({ text: p.text, platform: p.platform, severityScore: p.severityScore })),
-          positiveHighlights,
-          dataQuality,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Brand analytics request failed");
-      if (typeof data.overview !== "string" || !Array.isArray(data.actions)) {
-        throw new Error("Unexpected response shape");
-      }
-      setAiAnalytics({ overview: data.overview, actions: data.actions });
-    } catch (err) {
-      setAiAnalytics(null);
-      setAiError(err instanceof Error ? err.message : "Unknown error");
-    } finally {
-      setAiLoading(false);
-    }
-  }
-
   const [showHealthDetail, setShowHealthDetail] = useState(false);
   const risk = riskLabel(health.score);
   const healthTone: "positive" | "warning" | "negative" =
@@ -179,13 +136,7 @@ export default function Dashboard({ records }: { records: ProcessedRecord[] }) {
         />
       </section>
 
-      <ExecutiveSummary
-        ruleBasedBullets={ruleBasedBullets}
-        ai={aiAnalytics}
-        loading={aiLoading}
-        error={aiError}
-        onGenerate={generateAiAnalytics}
-      />
+      <ExecutiveSummary bullets={ruleBasedBullets} />
 
       {showHealthDetail && (
         <Modal title="Brand Health" onClose={() => setShowHealthDetail(false)}>
