@@ -26,35 +26,37 @@ export default function TopProblemsTable({ data }: { data: TopicBreakdownRow[] }
   }
 
   return (
-    <table className="w-full text-sm">
-      <thead>
-        <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-400">
-          <th className="py-2 pr-2">Rank</th>
-          <th className="py-2 pr-2">Issue</th>
-          <th className="py-2 pr-2">Negative posts</th>
-          <th className="py-2">Business impact</th>
-        </tr>
-      </thead>
-      <tbody>
-        {ranked.map((row, i) => {
-          const impact = impactLabel(row.negative, row.total);
-          return (
-            <tr key={row.topic} className="border-b border-slate-100 last:border-0">
-              <td className="py-2 pr-2 text-slate-400">{i + 1}</td>
-              <td className="py-2 pr-2 font-medium text-slate-800">{prettyTopic(row.topic)}</td>
-              <td className="py-2 pr-2 text-slate-600">
-                {row.negative} <span className="text-slate-400">/ {row.total}</span>
-              </td>
-              <td className="py-2">
-                <span className="inline-flex items-center gap-1.5 text-slate-600">
-                  <span className={`h-2 w-2 rounded-full ${impact.dot}`} />
-                  {impact.label}
-                </span>
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+    <div className="-mx-2 overflow-x-auto px-2">
+      <table className="w-full min-w-105 text-sm">
+        <thead>
+          <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-400">
+            <th className="py-2 pr-2">Rank</th>
+            <th className="py-2 pr-2">Issue</th>
+            <th className="py-2 pr-2">Negative posts</th>
+            <th className="py-2">Business impact</th>
+          </tr>
+        </thead>
+        <tbody>
+          {ranked.map((row, i) => {
+            const impact = impactLabel(row.negative, row.total);
+            return (
+              <tr key={row.topic} className="border-b border-slate-100 last:border-0">
+                <td className="py-2 pr-2 text-slate-400">{i + 1}</td>
+                <td className="py-2 pr-2 font-medium text-slate-800">{prettyTopic(row.topic)}</td>
+                <td className="py-2 pr-2 text-slate-600">
+                  {row.negative} <span className="text-slate-400">/ {row.total}</span>
+                </td>
+                <td className="py-2">
+                  <span className="inline-flex items-center gap-1.5 text-slate-600">
+                    <span className={`h-2 w-2 rounded-full ${impact.dot}`} />
+                    {impact.label}
+                  </span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }

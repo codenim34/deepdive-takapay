@@ -21,7 +21,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full antialiased" suppressHydrationWarning>
       <body className="min-h-full font-sans">
-        <div className="flex min-h-full">
+        <div className="flex min-h-full flex-col md:flex-row">
           <Sidebar />
           <div className="min-h-full min-w-0 flex-1 bg-slate-50">{children}</div>
         </div>

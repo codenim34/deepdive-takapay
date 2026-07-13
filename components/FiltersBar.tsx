@@ -27,7 +27,7 @@ export default function FiltersBar({
   return (
     <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
       <select
-        className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+        className="min-w-0 flex-1 basis-[calc(50%-0.375rem)] rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 sm:flex-none sm:basis-auto"
         value={filters.platform}
         onChange={(e) => onChange({ ...filters, platform: e.target.value })}
       >
@@ -40,7 +40,7 @@ export default function FiltersBar({
       </select>
 
       <select
-        className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+        className="min-w-0 flex-1 basis-[calc(50%-0.375rem)] rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 sm:flex-none sm:basis-auto"
         value={filters.topic}
         onChange={(e) => onChange({ ...filters, topic: e.target.value })}
       >
@@ -53,7 +53,7 @@ export default function FiltersBar({
       </select>
 
       <select
-        className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+        className="min-w-0 flex-1 basis-[calc(50%-0.375rem)] rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 sm:flex-none sm:basis-auto"
         value={filters.sentiment}
         onChange={(e) => onChange({ ...filters, sentiment: e.target.value })}
       >
@@ -66,7 +66,7 @@ export default function FiltersBar({
       <input
         type="text"
         placeholder="Search posts or authors..."
-        className="min-w-[200px] flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700"
+        className="min-w-0 flex-1 basis-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 sm:basis-50"
         value={filters.search}
         onChange={(e) => onChange({ ...filters, search: e.target.value })}
       />
@@ -78,7 +78,7 @@ export default function FiltersBar({
         Reset
       </button>
 
-      <span className="ml-auto text-sm text-slate-400">{resultCount} posts</span>
+      <span className="text-sm text-slate-400 sm:ml-auto">{resultCount} posts</span>
     </div>
   );
 }

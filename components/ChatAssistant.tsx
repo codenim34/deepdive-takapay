@@ -45,9 +45,9 @@ export default function ChatAssistant({ context }: { context: AssistantContext }
   }
 
   return (
-    <div className="fixed bottom-6 right-6 z-40">
+    <div className="fixed bottom-4 right-4 z-40 sm:bottom-6 sm:right-6">
       {open && (
-        <div className="mb-3 flex h-[28rem] w-80 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl sm:w-96">
+        <div className="mb-3 flex h-[70vh] max-h-112 w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl sm:w-96">
           <div className="flex items-center justify-between border-b border-slate-200 bg-slate-900 px-4 py-3">
             <p className="text-sm font-semibold text-white">Brand Assistant</p>
             <button
