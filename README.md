@@ -8,7 +8,7 @@ Built for the **DeepDive Associate Product Engineer Take-home Assignment**.
 
 ## Live Demo
 
-🔗 https://deepdive-takapay.vercel.app/
+🔗 https://deepdive-takapay12.vercel.app/
 
 ## GitHub
 
