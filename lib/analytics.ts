@@ -7,6 +7,28 @@ import type {
   SentimentLabel,
 } from "./types";
 
+// ---------------------------------------------------------------------------
+// Defensive coercion
+//
+// The dataset is an external feed and is documented as intentionally noisy.
+// Everything below assumes a field can arrive missing, null, or of the wrong
+// type, because a single malformed row otherwise takes down a whole
+// server-rendered page rather than degrading one card. These do not "fix"
+// data — they only stop a bad row from crashing the render, and the row
+// stays flagged and visible downstream.
+// ---------------------------------------------------------------------------
+
+/** A usable string, or "" for anything that isn't one. */
+function safeText(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+/** A finite number, or `fallback` for null/undefined/NaN/non-numeric input. */
+function safeNumber(value: unknown, fallback = 0): number {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 /**
  * Turn a 0-100 sentiment_score into a label. We use this as the source of
  * truth instead of the raw `sentiment` column, because some records ship
@@ -39,7 +61,7 @@ const NEGATIVE_INTENT_PHRASES = [
 ];
 
 function hasNegativeIntentPhrase(text: string): boolean {
-  const lower = text.toLowerCase();
+  const lower = safeText(text).toLowerCase();
   return NEGATIVE_INTENT_PHRASES.some((phrase) => lower.includes(phrase.toLowerCase()));
 }
 
@@ -63,10 +85,12 @@ function computeSeverityScore(r: {
   comments: number;
   sentiment_score: number;
 }): number {
-  const lower = r.text.toLowerCase();
-  const negativeWeight = Math.max(0, 100 - r.sentiment_score); // 0-100, higher = more negative
+  const lower = safeText(r.text).toLowerCase();
+  // A missing score is treated as neutral (50) rather than 0, so an absent
+  // field cannot masquerade as maximum negativity and top the urgent list.
+  const negativeWeight = Math.max(0, 100 - safeNumber(r.sentiment_score, 50)); // 0-100, higher = more negative
   const moneyAtStake = MONEY_AT_STAKE_PHRASES.some((p) => lower.includes(p.toLowerCase()));
-  const engagement = r.reactions + r.comments;
+  const engagement = safeNumber(r.reactions) + safeNumber(r.comments);
   // Engagement is uncapped in the data, so compress it with a log curve
   // instead of letting one viral post dominate the whole ranking.
   const engagementScore = Math.min(30, Math.log10(engagement + 1) * 12);
@@ -98,14 +122,18 @@ export function processRecords(
     const sentimentBucket = sentimentBucketFromScore(r.sentiment_score);
     const labelScoreMismatch = sentimentBucket !== r.sentiment;
 
-    const normalizedText = r.text.trim().toLowerCase();
-    const isDuplicate = seenText.has(normalizedText);
-    seenText.add(normalizedText);
+    const text = safeText(r.text);
+    const normalizedText = text.trim().toLowerCase();
+    // An empty text field is not evidence of duplication — several blank
+    // rows would otherwise all collapse into "duplicate of each other".
+    const isDuplicate = normalizedText.length > 0 && seenText.has(normalizedText);
+    if (normalizedText.length > 0) seenText.add(normalizedText);
 
     const isOffTopic = r.topic === "off_topic";
 
-    const date = new Date(r.timestamp.replace(" ", "T"));
-    const day = r.timestamp.slice(0, 10); // YYYY-MM-DD
+    const timestamp = safeText(r.timestamp);
+    const date = new Date(timestamp.replace(" ", "T"));
+    const day = timestamp.slice(0, 10); // YYYY-MM-DD
 
     const reviewFlags: ReviewFlag[] = [];
     if (labelScoreMismatch) reviewFlags.push("label_score_mismatch");
@@ -131,6 +159,12 @@ export function processRecords(
       enriched: enrichedMap[r.id] ?? null,
     };
   });
+}
+
+/** Sort comparator: most-engaged post first. Used wherever a representative
+ *  quote is picked, so "representative" means the same thing everywhere. */
+function byEngagementDesc(a: ProcessedRecord, b: ProcessedRecord): number {
+  return b.reactions + b.comments - (a.reactions + a.comments);
 }
 
 /** Records that should count toward brand-sentiment metrics: on-topic and de-duplicated. */
@@ -315,9 +349,7 @@ export function computeCompetitorInsight(records: ProcessedRecord[]): Competitor
     ).length,
   })).filter((t) => t.count > 0);
 
-  const sampleQuotes = [...competitorRecords]
-    .sort((a, b) => b.reactions + b.comments - (a.reactions + a.comments))
-    .slice(0, 3);
+  const sampleQuotes = [...competitorRecords].sort(byEngagementDesc).slice(0, 3);
 
   return {
     competitorName,
@@ -347,9 +379,7 @@ export function computePositiveHighlights(records: ProcessedRecord[]): PositiveH
     .map(([topic, recs]) => ({
       topic,
       count: recs.length,
-      sampleQuote: [...recs].sort(
-        (a, b) => b.reactions + b.comments - (a.reactions + a.comments)
-      )[0],
+      sampleQuote: [...recs].sort(byEngagementDesc)[0],
     }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 4);
@@ -362,11 +392,51 @@ export interface HealthScore {
 }
 
 /**
+ * Shift a YYYY-MM-DD day key by a whole number of days, returning another
+ * YYYY-MM-DD key.
+ *
+ * Day keys are anchored to UTC noon rather than midnight so that a DST
+ * transition in the host timezone can never push the result onto the
+ * neighbouring calendar date. The input and output are plain strings, so the
+ * caller never has to reason about the host timezone at all.
+ */
+export function shiftDay(day: string, deltaDays: number): string {
+  const anchor = new Date(`${day}T12:00:00Z`);
+  anchor.setUTCDate(anchor.getUTCDate() + deltaDays);
+  return anchor.toISOString().slice(0, 10);
+}
+
+/**
+ * Records falling inside an inclusive [fromDay, toDay] window of calendar
+ * days.
+ *
+ * The comparison is done on the `day` string, not on the parsed `date`.
+ * YYYY-MM-DD sorts lexicographically in true chronological order, so this is
+ * both exact and timezone-independent — see the comment on computeHealthScore
+ * for why that matters.
+ */
+export function sliceByDayWindow(
+  records: ProcessedRecord[],
+  fromDay: string,
+  toDay: string
+): ProcessedRecord[] {
+  return records.filter((r) => r.day >= fromDay && r.day <= toDay);
+}
+
+/**
  * Deliberately simple and fully transparent: score = 100 - (% of
  * brand-relevant posts that are negative). No hidden weighting — a brand
  * manager (or a reviewer) can recompute it by hand from the sentiment split
  * shown right next to it. Trend compares the most recent 7 days of data
  * against the 7 days before that.
+ *
+ * The two windows are sliced on the YYYY-MM-DD `day` key rather than on the
+ * parsed Date. An earlier version compared `r.date` (parsed from a timestamp
+ * with no zone designator, i.e. host-local) against `new Date(lastDay)`
+ * (parsed as UTC midnight). The two are not on the same clock, so the newest
+ * day of data fell outside the "recent" window — entirely under UTC, and
+ * partially under other offsets. That made the headline trend both wrong and
+ * dependent on the server's timezone.
  */
 export function computeHealthScore(records: ProcessedRecord[]): HealthScore {
   const relevant = brandRelevant(records);
@@ -376,15 +446,11 @@ export function computeHealthScore(records: ProcessedRecord[]): HealthScore {
   const days = Array.from(new Set(relevant.map((r) => r.day))).sort();
   if (days.length < 2) return { score, deltaPoints: 0, direction: "flat" };
 
+  // Two adjacent, non-overlapping 7-day windows ending on the newest day of
+  // data (inclusive), matching what the UI claims the trend measures.
   const lastDay = days[days.length - 1];
-  const cutoff = new Date(lastDay);
-  const sevenDaysAgo = new Date(cutoff);
-  sevenDaysAgo.setDate(cutoff.getDate() - 7);
-  const fourteenDaysAgo = new Date(cutoff);
-  fourteenDaysAgo.setDate(cutoff.getDate() - 14);
-
-  const recentWindow = relevant.filter((r) => r.date >= sevenDaysAgo && r.date <= cutoff);
-  const priorWindow = relevant.filter((r) => r.date >= fourteenDaysAgo && r.date < sevenDaysAgo);
+  const recentWindow = sliceByDayWindow(relevant, shiftDay(lastDay, -6), lastDay);
+  const priorWindow = sliceByDayWindow(relevant, shiftDay(lastDay, -13), shiftDay(lastDay, -7));
 
   if (recentWindow.length === 0 || priorWindow.length === 0) {
     return { score, deltaPoints: 0, direction: "flat" };
@@ -417,11 +483,21 @@ export function riskLabel(score: number): { label: string; color: string; accent
   return { label: "High risk", color: "text-rose-600 bg-rose-50 ring-rose-200", accent: "border-l-rose-400" };
 }
 
-function prettyTopicLabel(topic: string): string {
-  return topic
+/**
+ * "failed_transaction" -> "Failed Transaction".
+ *
+ * Empty segments are dropped before capitalising. Indexing `w[0]` on the
+ * empty string yields undefined, so an empty topic, a leading underscore or
+ * a doubled underscore used to throw a TypeError here — and because this
+ * feeds the executive summary on a server-rendered page, that single bad row
+ * would have taken down the whole dashboard rather than one bullet.
+ */
+export function prettyTopicLabel(topic: string): string {
+  const words = safeText(topic)
     .split("_")
-    .map((w) => w[0].toUpperCase() + w.slice(1))
-    .join(" ");
+    .filter((w) => w.length > 0)
+    .map((w) => w[0].toUpperCase() + w.slice(1));
+  return words.length > 0 ? words.join(" ") : "Uncategorised";
 }
 
 /**
@@ -478,6 +554,53 @@ export function computeExecutiveSummary(
   }
 
   return bullets;
+}
+
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+/** "2026-06-30" -> "June 2026". Reads the parts out of the string directly,
+ *  so it never depends on the host timezone the way Date formatting would. */
+function monthYearLabel(day: string): string {
+  const [year, month] = day.split("-");
+  return `${MONTH_NAMES[Number(month) - 1] ?? month} ${year}`;
+}
+
+export interface DatasetMeta {
+  postCount: number;
+  platformCount: number;
+  firstDay: string | null;
+  lastDay: string | null;
+  /** Human-readable coverage, e.g. "June 2026" or "June 2026 - August 2026". */
+  periodLabel: string;
+}
+
+/**
+ * Descriptive facts about whatever dataset is actually loaded — post count,
+ * how many distinct platforms it spans, and the calendar period it covers.
+ *
+ * The dashboard header used to state these as literals ("7 platforms, June
+ * 2026"). That was true of the snapshot committed at the time and silently
+ * false for any other, so a refreshed feed, an added platform or a second
+ * month of collection would have left the page confidently describing data
+ * it was no longer showing. Deriving them means the header cannot drift.
+ */
+export function computeDatasetMeta(records: ProcessedRecord[]): DatasetMeta {
+  const platformCount = new Set(records.map((r) => r.platform)).size;
+  const days = Array.from(new Set(records.map((r) => r.day))).sort();
+  const firstDay = days[0] ?? null;
+  const lastDay = days[days.length - 1] ?? null;
+
+  let periodLabel = "";
+  if (firstDay && lastDay) {
+    const from = monthYearLabel(firstDay);
+    const to = monthYearLabel(lastDay);
+    periodLabel = from === to ? from : `${from} - ${to}`;
+  }
+
+  return { postCount: records.length, platformCount, firstDay, lastDay, periodLabel };
 }
 
 export interface DataQualityNotes {

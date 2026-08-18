@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard" },
@@ -13,10 +13,20 @@ const NAV_ITEMS = [
 export default function Sidebar() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [lastPathname, setLastPathname] = useState(pathname);
 
-  useEffect(() => {
+  // Close the mobile drawer whenever navigation lands on a new route.
+  //
+  // This used to be an effect. Closing in an effect meant the browser first
+  // painted the new page with the drawer still open, then re-rendered to
+  // close it — a visible flash on a slow device — and it is what
+  // react-hooks/set-state-in-effect flags. Adjusting state during render is
+  // React's documented alternative: the render is discarded and re-run
+  // immediately, before anything reaches the screen.
+  if (lastPathname !== pathname) {
+    setLastPathname(pathname);
     setOpen(false);
-  }, [pathname]);
+  }
 
   return (
     <>

@@ -40,6 +40,7 @@ It includes:
 - Urgent posts
 - Search & filtering
 - Competitor Analysis
+- CSV export of the current view
 ---
 
 ### Competitor Analysis
@@ -68,6 +69,18 @@ Rather than silently trusting every sentiment label, the dashboard flags posts w
 Flagged posts can be reviewed through a simple **Accept / Discard** workflow.
 
 ---
+
+### CSV Export
+
+Every filter combination on the dashboard can be exported with the **Export CSV** button, which downloads exactly the rows behind the current view — the count on the button matches the count beside it.
+
+The export is deliberately not just the raw feed:
+
+- both the **original** sentiment label and the **derived** bucket are included, so the disagreement stays visible
+- excluded rows are exported too, each carrying its `exclusion_reason` and a `counted_in_headline_metrics` column
+- `review_flags` and `severity_score` come along, so a reviewer can sort the queue in a spreadsheet
+
+This keeps the export as honest about data quality as the dashboard itself, rather than shipping a clean-looking file that hides the same decisions the UI is careful to surface.
 
 ### Brand Assistant
 
@@ -142,6 +155,8 @@ lib/analytics.ts
 - **data/** — static dataset used as the application's data source.
 - **lib/analytics.ts** — core processing pipeline responsible for cleaning, flagging data-quality issues, calculating sentiment, topics, severity, competitor insights, and dashboard metrics.
 - **lib/loadRecords.ts** — shared loader used by every page.
+- **lib/csv.ts** — RFC 4180 serialization for the CSV export.
+- **tests/** — regression suite for the analytics and CSV pipelines, run with `npm test`.
 - **components/** — reusable UI components that render processed data.
 - **app/** — Dashboard, Competitor Analysis, Feedback Queue, and API routes.
 - **Brand Assistant** — the only feature using Gemini, grounded in dashboard aggregates.
@@ -211,7 +226,7 @@ Replace the current rule-based matching with lightweight ML models to improve:
 
 ### 5. Shareable Reports
 
-Allow users to:
+CSV export of the current view now ships (see below). Still open:
 
 - export PDF summaries
 - share filtered dashboard links
@@ -232,6 +247,15 @@ Open:
 http://localhost:3000
 ```
 
+### Checks
+
+```bash
+npm run verify     # typecheck + lint + tests
+npm test           # regression suite only
+```
+
+The tests run on Node's built-in test runner against the TypeScript sources directly, so they add no dependency to the project and nothing to the shipped bundle.
+
 ---
 
 # Environment Variables
@@ -243,6 +267,16 @@ GEMINI_API_KEY=your_api_key
 ```
 
 Without a Gemini API key, the dashboard continues to function normally; only the Brand Assistant is disabled.
+
+The remaining variables are optional and exist so that a change on Google's side — a retired model id, a moved endpoint, a slower SLA — can be absorbed by editing configuration rather than by shipping a new build:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `GEMINI_API_KEY` | — | API key. Required for the Brand Assistant. |
+| `GOOGLE_API_KEY` | — | Accepted as a fallback key name, since that is what Google's own tooling and several hosts inject. |
+| `GEMINI_MODEL` | `gemini-3.1-flash-lite` | Model id. Change this when the current one is retired; a `404` from the API is reported with that hint. |
+| `GEMINI_API_BASE` | `https://generativelanguage.googleapis.com/v1beta` | API base URL, for a regional endpoint or an internal proxy. |
+| `GEMINI_TIMEOUT_MS` | `20000` | Per-request timeout. A non-numeric or non-positive value is ignored in favour of the default. |
 
 ---
 

@@ -1,11 +1,5 @@
+import { prettyTopicLabel } from "@/lib/analytics";
 import type { PositiveHighlight } from "@/lib/analytics";
-
-function prettyTopic(topic: string) {
-  return topic
-    .split("_")
-    .map((w) => w[0].toUpperCase() + w.slice(1))
-    .join(" ");
-}
 
 export default function PositiveHighlights({ highlights }: { highlights: PositiveHighlight[] }) {
   if (highlights.length === 0) return null;
@@ -20,7 +14,7 @@ export default function PositiveHighlights({ highlights }: { highlights: Positiv
         {highlights.map((h) => (
           <div key={h.topic} className="rounded-lg bg-emerald-50 p-3">
             <div className="flex items-center justify-between">
-              <span className="font-medium text-emerald-800">{prettyTopic(h.topic)}</span>
+              <span className="font-medium text-emerald-800">{prettyTopicLabel(h.topic)}</span>
               <span className="text-xs text-emerald-600">{h.count} positive posts</span>
             </div>
             <p className="mt-1 text-sm text-emerald-900/80">&ldquo;{h.sampleQuote.text}&rdquo;</p>

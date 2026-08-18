@@ -1,11 +1,5 @@
+import { prettyTopicLabel } from "@/lib/analytics";
 import type { TopicBreakdownRow } from "@/lib/analytics";
-
-function prettyTopic(topic: string) {
-  return topic
-    .split("_")
-    .map((w) => w[0].toUpperCase() + w.slice(1))
-    .join(" ");
-}
 
 function impactLabel(negative: number, total: number): { label: string; dot: string } {
   const pct = total ? negative / total : 0;
@@ -42,7 +36,7 @@ export default function TopProblemsTable({ data }: { data: TopicBreakdownRow[] }
             return (
               <tr key={row.topic} className="border-b border-slate-100 last:border-0">
                 <td className="py-2 pr-2 text-slate-400">{i + 1}</td>
-                <td className="py-2 pr-2 font-medium text-slate-800">{prettyTopic(row.topic)}</td>
+                <td className="py-2 pr-2 font-medium text-slate-800">{prettyTopicLabel(row.topic)}</td>
                 <td className="py-2 pr-2 text-slate-600">
                   {row.negative} <span className="text-slate-400">/ {row.total}</span>
                 </td>

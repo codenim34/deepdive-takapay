@@ -10,17 +10,11 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { prettyTopicLabel } from "@/lib/analytics";
 import type { TopicBreakdownRow } from "@/lib/analytics";
 
-function prettyTopic(topic: string) {
-  return topic
-    .split("_")
-    .map((w) => w[0].toUpperCase() + w.slice(1))
-    .join(" ");
-}
-
 export default function TopicBreakdownChart({ data }: { data: TopicBreakdownRow[] }) {
-  const chartData = data.map((row) => ({ ...row, topicLabel: prettyTopic(row.topic) }));
+  const chartData = data.map((row) => ({ ...row, topicLabel: prettyTopicLabel(row.topic) }));
   const height = Math.max(280, chartData.length * 34);
 
   return (
