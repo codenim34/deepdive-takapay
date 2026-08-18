@@ -244,6 +244,16 @@ GEMINI_API_KEY=your_api_key
 
 Without a Gemini API key, the dashboard continues to function normally; only the Brand Assistant is disabled.
 
+The remaining variables are optional and exist so that a change on Google's side — a retired model id, a moved endpoint, a slower SLA — can be absorbed by editing configuration rather than by shipping a new build:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `GEMINI_API_KEY` | — | API key. Required for the Brand Assistant. |
+| `GOOGLE_API_KEY` | — | Accepted as a fallback key name, since that is what Google's own tooling and several hosts inject. |
+| `GEMINI_MODEL` | `gemini-3.1-flash-lite` | Model id. Change this when the current one is retired; a `404` from the API is reported with that hint. |
+| `GEMINI_API_BASE` | `https://generativelanguage.googleapis.com/v1beta` | API base URL, for a regional endpoint or an internal proxy. |
+| `GEMINI_TIMEOUT_MS` | `20000` | Per-request timeout. A non-numeric or non-positive value is ignored in favour of the default. |
+
 ---
 
 # Notes

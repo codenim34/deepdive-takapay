@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { callGemini, GeminiError } from "@/lib/gemini";
+import { callGemini, GeminiError, resolveGeminiConfig } from "@/lib/gemini";
 import type { AssistantContext } from "@/lib/assistantContext";
 
 export const runtime = "nodejs";
@@ -74,9 +74,12 @@ Respond with ONLY a JSON object, no markdown fences, no other text, in this exac
 }
 
 export async function POST(request: Request) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json({ error: "GEMINI_API_KEY not configured" }, { status: 503 });
+  const config = resolveGeminiConfig();
+  if (!config) {
+    return NextResponse.json(
+      { error: "Brand Assistant is not configured — set GEMINI_API_KEY." },
+      { status: 503 }
+    );
   }
 
   let body: unknown;
@@ -96,7 +99,7 @@ export async function POST(request: Request) {
     .join("\n\n");
 
   try {
-    const parsed = (await callGemini(apiKey, conversation, systemInstruction)) as { reply?: unknown };
+    const parsed = (await callGemini(config, conversation, systemInstruction)) as { reply?: unknown };
 
     if (typeof parsed.reply !== "string") {
       return NextResponse.json({ error: "Gemini response missing reply" }, { status: 502 });

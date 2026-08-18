@@ -6,6 +6,7 @@ import {
   computeCompetitorInsight,
   computeDailyTrend,
   computeDataQualityNotes,
+  computeDatasetMeta,
   computeExecutiveSummary,
   computeHealthScore,
   computePlatformBreakdown,
@@ -87,6 +88,7 @@ export default function Dashboard({ records }: { records: ProcessedRecord[] }) {
   const datasetRelevant = useMemo(() => brandRelevant(records), [records]);
   const datasetDiscarded = records.length - datasetRelevant.length;
   const datasetFlagged = useMemo(() => reviewQueue(records), [records]);
+  const datasetMeta = useMemo(() => computeDatasetMeta(records), [records]);
 
   const [showHealthDetail, setShowHealthDetail] = useState(false);
   const risk = riskLabel(health.score);
@@ -102,7 +104,9 @@ export default function Dashboard({ records }: { records: ProcessedRecord[] }) {
       <header>
         <h1 className="text-2xl font-semibold text-slate-900">TakaPay Social Listening</h1>
         <p className="mt-1 text-sm text-slate-500">
-          {records.length} posts collected across 7 platforms, June 2026.
+          {datasetMeta.postCount} posts collected across {datasetMeta.platformCount}{" "}
+          {datasetMeta.platformCount === 1 ? "platform" : "platforms"}
+          {datasetMeta.periodLabel ? `, ${datasetMeta.periodLabel}` : ""}.
         </p>
       </header>
 

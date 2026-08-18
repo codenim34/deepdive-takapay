@@ -516,6 +516,53 @@ export function computeExecutiveSummary(
   return bullets;
 }
 
+const MONTH_NAMES = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+/** "2026-06-30" -> "June 2026". Reads the parts out of the string directly,
+ *  so it never depends on the host timezone the way Date formatting would. */
+function monthYearLabel(day: string): string {
+  const [year, month] = day.split("-");
+  return `${MONTH_NAMES[Number(month) - 1] ?? month} ${year}`;
+}
+
+export interface DatasetMeta {
+  postCount: number;
+  platformCount: number;
+  firstDay: string | null;
+  lastDay: string | null;
+  /** Human-readable coverage, e.g. "June 2026" or "June 2026 - August 2026". */
+  periodLabel: string;
+}
+
+/**
+ * Descriptive facts about whatever dataset is actually loaded — post count,
+ * how many distinct platforms it spans, and the calendar period it covers.
+ *
+ * The dashboard header used to state these as literals ("7 platforms, June
+ * 2026"). That was true of the snapshot committed at the time and silently
+ * false for any other, so a refreshed feed, an added platform or a second
+ * month of collection would have left the page confidently describing data
+ * it was no longer showing. Deriving them means the header cannot drift.
+ */
+export function computeDatasetMeta(records: ProcessedRecord[]): DatasetMeta {
+  const platformCount = new Set(records.map((r) => r.platform)).size;
+  const days = Array.from(new Set(records.map((r) => r.day))).sort();
+  const firstDay = days[0] ?? null;
+  const lastDay = days[days.length - 1] ?? null;
+
+  let periodLabel = "";
+  if (firstDay && lastDay) {
+    const from = monthYearLabel(firstDay);
+    const to = monthYearLabel(lastDay);
+    periodLabel = from === to ? from : `${from} - ${to}`;
+  }
+
+  return { postCount: records.length, platformCount, firstDay, lastDay, periodLabel };
+}
+
 export interface DataQualityNotes {
   totalRecords: number;
   labelScoreMismatches: number;
