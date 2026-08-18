@@ -10,6 +10,10 @@
     "module": "esnext",
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
+    // The regression suite runs on Node's own test runner straight from the
+    // TypeScript sources, and Node's ESM resolver requires the file
+    // extension. Safe alongside "noEmit": nothing is transpiled by tsc.
+    "allowImportingTsExtensions": true,
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,

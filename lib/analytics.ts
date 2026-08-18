@@ -7,6 +7,28 @@ import type {
   SentimentLabel,
 } from "./types";
 
+// ---------------------------------------------------------------------------
+// Defensive coercion
+//
+// The dataset is an external feed and is documented as intentionally noisy.
+// Everything below assumes a field can arrive missing, null, or of the wrong
+// type, because a single malformed row otherwise takes down a whole
+// server-rendered page rather than degrading one card. These do not "fix"
+// data — they only stop a bad row from crashing the render, and the row
+// stays flagged and visible downstream.
+// ---------------------------------------------------------------------------
+
+/** A usable string, or "" for anything that isn't one. */
+function safeText(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+/** A finite number, or `fallback` for null/undefined/NaN/non-numeric input. */
+function safeNumber(value: unknown, fallback = 0): number {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
 /**
  * Turn a 0-100 sentiment_score into a label. We use this as the source of
  * truth instead of the raw `sentiment` column, because some records ship
@@ -39,7 +61,7 @@ const NEGATIVE_INTENT_PHRASES = [
 ];
 
 function hasNegativeIntentPhrase(text: string): boolean {
-  const lower = text.toLowerCase();
+  const lower = safeText(text).toLowerCase();
   return NEGATIVE_INTENT_PHRASES.some((phrase) => lower.includes(phrase.toLowerCase()));
 }
 
@@ -63,10 +85,12 @@ function computeSeverityScore(r: {
   comments: number;
   sentiment_score: number;
 }): number {
-  const lower = r.text.toLowerCase();
-  const negativeWeight = Math.max(0, 100 - r.sentiment_score); // 0-100, higher = more negative
+  const lower = safeText(r.text).toLowerCase();
+  // A missing score is treated as neutral (50) rather than 0, so an absent
+  // field cannot masquerade as maximum negativity and top the urgent list.
+  const negativeWeight = Math.max(0, 100 - safeNumber(r.sentiment_score, 50)); // 0-100, higher = more negative
   const moneyAtStake = MONEY_AT_STAKE_PHRASES.some((p) => lower.includes(p.toLowerCase()));
-  const engagement = r.reactions + r.comments;
+  const engagement = safeNumber(r.reactions) + safeNumber(r.comments);
   // Engagement is uncapped in the data, so compress it with a log curve
   // instead of letting one viral post dominate the whole ranking.
   const engagementScore = Math.min(30, Math.log10(engagement + 1) * 12);
@@ -98,14 +122,18 @@ export function processRecords(
     const sentimentBucket = sentimentBucketFromScore(r.sentiment_score);
     const labelScoreMismatch = sentimentBucket !== r.sentiment;
 
-    const normalizedText = r.text.trim().toLowerCase();
-    const isDuplicate = seenText.has(normalizedText);
-    seenText.add(normalizedText);
+    const text = safeText(r.text);
+    const normalizedText = text.trim().toLowerCase();
+    // An empty text field is not evidence of duplication — several blank
+    // rows would otherwise all collapse into "duplicate of each other".
+    const isDuplicate = normalizedText.length > 0 && seenText.has(normalizedText);
+    if (normalizedText.length > 0) seenText.add(normalizedText);
 
     const isOffTopic = r.topic === "off_topic";
 
-    const date = new Date(r.timestamp.replace(" ", "T"));
-    const day = r.timestamp.slice(0, 10); // YYYY-MM-DD
+    const timestamp = safeText(r.timestamp);
+    const date = new Date(timestamp.replace(" ", "T"));
+    const day = timestamp.slice(0, 10); // YYYY-MM-DD
 
     const reviewFlags: ReviewFlag[] = [];
     if (labelScoreMismatch) reviewFlags.push("label_score_mismatch");
@@ -453,11 +481,21 @@ export function riskLabel(score: number): { label: string; color: string; accent
   return { label: "High risk", color: "text-rose-600 bg-rose-50 ring-rose-200", accent: "border-l-rose-400" };
 }
 
+/**
+ * "failed_transaction" -> "Failed Transaction".
+ *
+ * Empty segments are dropped before capitalising. Indexing `w[0]` on the
+ * empty string yields undefined, so an empty topic, a leading underscore or
+ * a doubled underscore used to throw a TypeError here — and because this
+ * feeds the executive summary on a server-rendered page, that single bad row
+ * would have taken down the whole dashboard rather than one bullet.
+ */
 function prettyTopicLabel(topic: string): string {
-  return topic
+  const words = safeText(topic)
     .split("_")
-    .map((w) => w[0].toUpperCase() + w.slice(1))
-    .join(" ");
+    .filter((w) => w.length > 0)
+    .map((w) => w[0].toUpperCase() + w.slice(1));
+  return words.length > 0 ? words.join(" ") : "Uncategorised";
 }
 
 /**
