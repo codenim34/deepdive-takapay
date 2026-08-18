@@ -161,6 +161,12 @@ export function processRecords(
   });
 }
 
+/** Sort comparator: most-engaged post first. Used wherever a representative
+ *  quote is picked, so "representative" means the same thing everywhere. */
+function byEngagementDesc(a: ProcessedRecord, b: ProcessedRecord): number {
+  return b.reactions + b.comments - (a.reactions + a.comments);
+}
+
 /** Records that should count toward brand-sentiment metrics: on-topic and de-duplicated. */
 export function brandRelevant(records: ProcessedRecord[]): ProcessedRecord[] {
   return records.filter((r) => r.exclusionReason === null);
@@ -343,9 +349,7 @@ export function computeCompetitorInsight(records: ProcessedRecord[]): Competitor
     ).length,
   })).filter((t) => t.count > 0);
 
-  const sampleQuotes = [...competitorRecords]
-    .sort((a, b) => b.reactions + b.comments - (a.reactions + a.comments))
-    .slice(0, 3);
+  const sampleQuotes = [...competitorRecords].sort(byEngagementDesc).slice(0, 3);
 
   return {
     competitorName,
@@ -375,9 +379,7 @@ export function computePositiveHighlights(records: ProcessedRecord[]): PositiveH
     .map(([topic, recs]) => ({
       topic,
       count: recs.length,
-      sampleQuote: [...recs].sort(
-        (a, b) => b.reactions + b.comments - (a.reactions + a.comments)
-      )[0],
+      sampleQuote: [...recs].sort(byEngagementDesc)[0],
     }))
     .sort((a, b) => b.count - a.count)
     .slice(0, 4);
@@ -490,7 +492,7 @@ export function riskLabel(score: number): { label: string; color: string; accent
  * feeds the executive summary on a server-rendered page, that single bad row
  * would have taken down the whole dashboard rather than one bullet.
  */
-function prettyTopicLabel(topic: string): string {
+export function prettyTopicLabel(topic: string): string {
   const words = safeText(topic)
     .split("_")
     .filter((w) => w.length > 0)

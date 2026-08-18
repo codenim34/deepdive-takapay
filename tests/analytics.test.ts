@@ -25,6 +25,7 @@ import {
   computePlatformBreakdown,
   computeSentimentSplit,
   computeTopicBreakdown,
+  prettyTopicLabel,
   processRecords,
   reviewQueue,
   shiftDay,
@@ -416,4 +417,19 @@ test("dataset metadata is derived from the records, not hardcoded", () => {
   assert.deepEqual(empty, {
     postCount: 0, platformCount: 0, firstDay: null, lastDay: null, periodLabel: "",
   });
+});
+
+// ---------------------------------------------------------------------------
+// MR-04: one shared topic formatter, previously cloned in five places
+// ---------------------------------------------------------------------------
+
+test("prettyTopicLabel is the single formatter, and it tolerates empty segments", () => {
+  assert.equal(prettyTopicLabel("failed_transaction"), "Failed Transaction");
+  assert.equal(prettyTopicLabel("recharge"), "Recharge");
+  // Each of these threw a TypeError in all five cloned copies.
+  assert.equal(prettyTopicLabel("_leading"), "Leading");
+  assert.equal(prettyTopicLabel("double__underscore"), "Double Underscore");
+  assert.equal(prettyTopicLabel("trailing_"), "Trailing");
+  assert.equal(prettyTopicLabel(""), "Uncategorised");
+  assert.equal(prettyTopicLabel("___"), "Uncategorised");
 });

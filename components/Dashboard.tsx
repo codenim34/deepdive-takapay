@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   brandRelevant,
   computeCompetitorInsight,
@@ -16,6 +16,7 @@ import {
   reviewQueue,
   riskLabel,
 } from "@/lib/analytics";
+import { csvFilename, postsToCsv } from "@/lib/csv";
 import type { Filters, ProcessedRecord } from "@/lib/types";
 import StatCard from "./StatCard";
 import SentimentDonut from "./SentimentDonut";
@@ -90,6 +91,24 @@ export default function Dashboard({ records }: { records: ProcessedRecord[] }) {
   const datasetFlagged = useMemo(() => reviewQueue(records), [records]);
   const datasetMeta = useMemo(() => computeDatasetMeta(records), [records]);
 
+  // Exports exactly what the user is looking at — the filtered set, before
+  // the brand-relevance split — so the row count matches the "N posts"
+  // readout beside the button. Excluded and flagged rows are still included,
+  // each carrying the reason it was excluded, which keeps the export as
+  // transparent about data quality as the dashboard itself.
+  const handleExport = useCallback(() => {
+    const csv = postsToCsv(filtered);
+    // A BOM so Excel reads the file as UTF-8; without it the Bangla text in
+    // this dataset opens as mojibake.
+    const blob = new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = csvFilename(filtered);
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [filtered]);
+
   const [showHealthDetail, setShowHealthDetail] = useState(false);
   const risk = riskLabel(health.score);
   const healthTone: "positive" | "warning" | "negative" =
@@ -116,6 +135,7 @@ export default function Dashboard({ records }: { records: ProcessedRecord[] }) {
         platforms={platforms}
         topics={topics}
         resultCount={filtered.length}
+        onExport={handleExport}
       />
 
       <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">

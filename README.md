@@ -40,6 +40,7 @@ It includes:
 - Urgent posts
 - Search & filtering
 - Competitor Analysis
+- CSV export of the current view
 ---
 
 ### Competitor Analysis
@@ -68,6 +69,18 @@ Rather than silently trusting every sentiment label, the dashboard flags posts w
 Flagged posts can be reviewed through a simple **Accept / Discard** workflow.
 
 ---
+
+### CSV Export
+
+Every filter combination on the dashboard can be exported with the **Export CSV** button, which downloads exactly the rows behind the current view — the count on the button matches the count beside it.
+
+The export is deliberately not just the raw feed:
+
+- both the **original** sentiment label and the **derived** bucket are included, so the disagreement stays visible
+- excluded rows are exported too, each carrying its `exclusion_reason` and a `counted_in_headline_metrics` column
+- `review_flags` and `severity_score` come along, so a reviewer can sort the queue in a spreadsheet
+
+This keeps the export as honest about data quality as the dashboard itself, rather than shipping a clean-looking file that hides the same decisions the UI is careful to surface.
 
 ### Brand Assistant
 
@@ -142,6 +155,8 @@ lib/analytics.ts
 - **data/** — static dataset used as the application's data source.
 - **lib/analytics.ts** — core processing pipeline responsible for cleaning, flagging data-quality issues, calculating sentiment, topics, severity, competitor insights, and dashboard metrics.
 - **lib/loadRecords.ts** — shared loader used by every page.
+- **lib/csv.ts** — RFC 4180 serialization for the CSV export.
+- **tests/** — regression suite for the analytics and CSV pipelines, run with `npm test`.
 - **components/** — reusable UI components that render processed data.
 - **app/** — Dashboard, Competitor Analysis, Feedback Queue, and API routes.
 - **Brand Assistant** — the only feature using Gemini, grounded in dashboard aggregates.
@@ -211,7 +226,7 @@ Replace the current rule-based matching with lightweight ML models to improve:
 
 ### 5. Shareable Reports
 
-Allow users to:
+CSV export of the current view now ships (see below). Still open:
 
 - export PDF summaries
 - share filtered dashboard links
@@ -231,6 +246,15 @@ Open:
 ```
 http://localhost:3000
 ```
+
+### Checks
+
+```bash
+npm run verify     # typecheck + lint + tests
+npm test           # regression suite only
+```
+
+The tests run on Node's built-in test runner against the TypeScript sources directly, so they add no dependency to the project and nothing to the shipped bundle.
 
 ---
 
