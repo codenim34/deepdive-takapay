@@ -362,11 +362,51 @@ export interface HealthScore {
 }
 
 /**
+ * Shift a YYYY-MM-DD day key by a whole number of days, returning another
+ * YYYY-MM-DD key.
+ *
+ * Day keys are anchored to UTC noon rather than midnight so that a DST
+ * transition in the host timezone can never push the result onto the
+ * neighbouring calendar date. The input and output are plain strings, so the
+ * caller never has to reason about the host timezone at all.
+ */
+export function shiftDay(day: string, deltaDays: number): string {
+  const anchor = new Date(`${day}T12:00:00Z`);
+  anchor.setUTCDate(anchor.getUTCDate() + deltaDays);
+  return anchor.toISOString().slice(0, 10);
+}
+
+/**
+ * Records falling inside an inclusive [fromDay, toDay] window of calendar
+ * days.
+ *
+ * The comparison is done on the `day` string, not on the parsed `date`.
+ * YYYY-MM-DD sorts lexicographically in true chronological order, so this is
+ * both exact and timezone-independent — see the comment on computeHealthScore
+ * for why that matters.
+ */
+export function sliceByDayWindow(
+  records: ProcessedRecord[],
+  fromDay: string,
+  toDay: string
+): ProcessedRecord[] {
+  return records.filter((r) => r.day >= fromDay && r.day <= toDay);
+}
+
+/**
  * Deliberately simple and fully transparent: score = 100 - (% of
  * brand-relevant posts that are negative). No hidden weighting — a brand
  * manager (or a reviewer) can recompute it by hand from the sentiment split
  * shown right next to it. Trend compares the most recent 7 days of data
  * against the 7 days before that.
+ *
+ * The two windows are sliced on the YYYY-MM-DD `day` key rather than on the
+ * parsed Date. An earlier version compared `r.date` (parsed from a timestamp
+ * with no zone designator, i.e. host-local) against `new Date(lastDay)`
+ * (parsed as UTC midnight). The two are not on the same clock, so the newest
+ * day of data fell outside the "recent" window — entirely under UTC, and
+ * partially under other offsets. That made the headline trend both wrong and
+ * dependent on the server's timezone.
  */
 export function computeHealthScore(records: ProcessedRecord[]): HealthScore {
   const relevant = brandRelevant(records);
@@ -376,15 +416,11 @@ export function computeHealthScore(records: ProcessedRecord[]): HealthScore {
   const days = Array.from(new Set(relevant.map((r) => r.day))).sort();
   if (days.length < 2) return { score, deltaPoints: 0, direction: "flat" };
 
+  // Two adjacent, non-overlapping 7-day windows ending on the newest day of
+  // data (inclusive), matching what the UI claims the trend measures.
   const lastDay = days[days.length - 1];
-  const cutoff = new Date(lastDay);
-  const sevenDaysAgo = new Date(cutoff);
-  sevenDaysAgo.setDate(cutoff.getDate() - 7);
-  const fourteenDaysAgo = new Date(cutoff);
-  fourteenDaysAgo.setDate(cutoff.getDate() - 14);
-
-  const recentWindow = relevant.filter((r) => r.date >= sevenDaysAgo && r.date <= cutoff);
-  const priorWindow = relevant.filter((r) => r.date >= fourteenDaysAgo && r.date < sevenDaysAgo);
+  const recentWindow = sliceByDayWindow(relevant, shiftDay(lastDay, -6), lastDay);
+  const priorWindow = sliceByDayWindow(relevant, shiftDay(lastDay, -13), shiftDay(lastDay, -7));
 
   if (recentWindow.length === 0 || priorWindow.length === 0) {
     return { score, deltaPoints: 0, direction: "flat" };
